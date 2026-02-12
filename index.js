@@ -4,6 +4,8 @@ const line = require('@line/bot-sdk');
 const cron = require('node-cron');
 const app = express();
 
+let tasks = [];
+
 const config = {
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.CHANNEL_SECRET,
@@ -32,46 +34,51 @@ function handleEvent(event) {
     return Promise.resolve(null);
   }
 
-  const userText = event.message.text;
+  const userMessage = event.message.text;
 
-  // ถ้าขึ้นต้นด้วยคำว่า "เตือน"
-  if (userText.startsWith("เตือน")) {
+  // รูปแบบ: เตือน 21:30 อ่านหนังสือ
+  if (userMessage.startsWith("เตือน")) {
 
-    const parts = userText.split(" ");
-    if (parts.length < 3) {
-      return client.replyMessage(event.replyToken, {
-        type: "text",
-        text: "รูปแบบไม่ถูกต้อง ตัวอย่าง: เตือน อ่านหนังสือ 20:00"
-      });
-    }
+    const parts = userMessage.split(" ");
+    const time = parts[1]; // 21:30
+    const text = parts.slice(2).join(" "); // อ่านหนังสือ
 
-    const task = parts[1];
-    const time = parts[2];
-
-    const [hour, minute] = time.split(":");
-
-    // ตั้ง cron job
-    cron.schedule(`${minute} ${hour} * * *`, () => {
-      client.pushMessage(event.source.userId, {
-        type: "text",
-        text: `🔔 ถึงเวลาแล้ว: ${task}`
-      });
+    tasks.push({
+      time,
+      text,
+      userId: event.source.userId
     });
 
     return client.replyMessage(event.replyToken, {
       type: "text",
-      text: `ตั้งเตือน "${task}" เวลา ${time} เรียบร้อยแล้ว`
+      text: `บันทึกแล้ว! จะเตือนเวลา ${time}`
     });
   }
 
   return client.replyMessage(event.replyToken, {
     type: "text",
-    text: `คุณพิมพ์ว่า: ${userText}`
+    text: "พิมพ์แบบนี้นะ: เตือน 21:30 อ่านหนังสือ"
   });
 }
-
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+cron.schedule('* * * * *', async () => {
+  const now = new Date();
+  const currentTime =
+    now.getHours().toString().padStart(2, '0') +
+    ':' +
+    now.getMinutes().toString().padStart(2, '0');
+
+  tasks.forEach(async (task) => {
+    if (task.time === currentTime) {
+      await client.pushMessage(task.userId, {
+        type: "text",
+        text: `⏰ ถึงเวลาแล้ว: ${task.text}`
+      });
+    }
+  });
 });
